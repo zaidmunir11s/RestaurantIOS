@@ -1,18 +1,28 @@
 import SwiftUI
 
 struct SignUpView: View {
+    @StateObject private var userSession = UserSession.shared
+    
     @State private var fullName: String = ""
     @State private var email: String = ""
     @State private var password: String = ""
     @State private var confirmPassword: String = ""
     @State private var phoneNumber: String = ""
     @State private var agreeToTerms: Bool = false
-    @State private var navigateToDashboard = false
+    @State private var showingAlert = false
+    @State private var validationError: String? = nil
+    
     @Environment(\.dismiss) private var dismiss
     
-    // For validation
-    @State private var errorMessage: String?
-    @State private var showError: Bool = false
+    private var firstName: String {
+        let components = fullName.components(separatedBy: " ")
+        return components.first ?? ""
+    }
+    
+    private var lastName: String {
+        let components = fullName.components(separatedBy: " ")
+        return components.count > 1 ? components.dropFirst().joined(separator: " ") : ""
+    }
     
     var body: some View {
         ZStack {
@@ -97,7 +107,7 @@ struct SignUpView: View {
                         .padding(.vertical, 5)
                         
                         // Error Message
-                        if showError, let errorMessage = errorMessage {
+                        if let errorMessage = validationError ?? userSession.error {
                             Text(errorMessage)
                                 .font(.caption)
                                 .foregroundColor(.red)
@@ -109,21 +119,37 @@ struct SignUpView: View {
                         Button(action: {
                             validateAndSignUp()
                         }) {
-                            Text("Sign Up")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(
-                                    LinearGradient(
-                                        gradient: Gradient(colors: [Color(hex: "4D52C7"), Color(hex: "5C65DF")]),
-                                        startPoint: .leading,
-                                        endPoint: .trailing
+                            if userSession.isLoading {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(
+                                        LinearGradient(
+                                            gradient: Gradient(colors: [Color(hex: "4D52C7"), Color(hex: "5C65DF")]),
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
                                     )
-                                )
-                                .cornerRadius(12)
-                                .shadow(color: Color(hex: "4D52C7").opacity(0.3), radius: 10, x: 0, y: 5)
+                                    .cornerRadius(12)
+                            } else {
+                                Text("Sign Up")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(
+                                        LinearGradient(
+                                            gradient: Gradient(colors: [Color(hex: "4D52C7"), Color(hex: "5C65DF")]),
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
+                                    )
+                                    .cornerRadius(12)
+                                    .shadow(color: Color(hex: "4D52C7").opacity(0.3), radius: 10, x: 0, y: 5)
+                            }
                         }
+                        .disabled(userSession.isLoading)
                         .padding(.top, 10)
                         
                         // Already have account
@@ -149,8 +175,17 @@ struct SignUpView: View {
                 .background(Color(hex: "EFF1FA"))
                 .cornerRadius(30, corners: [.topLeft, .topRight])
             }
-            .navigationDestination(isPresented: $navigateToDashboard) {
+            .navigationDestination(isPresented: .constant(userSession.isLoggedIn)) {
                 DashboardView()
+            }
+            .alert(isPresented: $showingAlert) {
+                Alert(
+                    title: Text("Error"),
+                    message: Text(validationError ?? userSession.error ?? "Unknown error"),
+                    dismissButton: .default(Text("OK")) {
+                        validationError = nil
+                    }
+                )
             }
         }
         .navigationBarHidden(true)
@@ -159,46 +194,64 @@ struct SignUpView: View {
     
     private func validateAndSignUp() {
         // Reset error
-        errorMessage = nil
-        showError = false
+        validationError = nil
         
         // Validation
         if fullName.isEmpty || email.isEmpty || password.isEmpty || confirmPassword.isEmpty || phoneNumber.isEmpty {
-            errorMessage = "Please fill in all fields"
-            showError = true
+            validationError = "Please fill in all fields"
+            showingAlert = true
+            return
+        }
+        
+        // Check for first and last name
+        if firstName.isEmpty || lastName.isEmpty {
+            validationError = "Please enter both first and last name"
+            showingAlert = true
             return
         }
         
         if !email.contains("@") || !email.contains(".") {
-            errorMessage = "Please enter a valid email address"
-            showError = true
+            validationError = "Please enter a valid email address"
+            showingAlert = true
             return
         }
         
         if password.count < 6 {
-            errorMessage = "Password must be at least 6 characters"
-            showError = true
+            validationError = "Password must be at least 6 characters"
+            showingAlert = true
             return
         }
         
         if password != confirmPassword {
-            errorMessage = "Passwords do not match"
-            showError = true
+            validationError = "Passwords do not match"
+            showingAlert = true
             return
         }
         
         if !agreeToTerms {
-            errorMessage = "Please agree to the Terms & Conditions"
-            showError = true
+            validationError = "Please agree to the Terms & Conditions"
+            showingAlert = true
             return
         }
         
-        // If all validation passes
-        navigateToDashboard = true
+        // If all validation passes, register the user
+        Task {
+            await userSession.register(
+                firstName: firstName,
+                lastName: lastName,
+                email: email,
+                password: password
+            )
+            
+            // Check if there was an error during registration
+            if userSession.error != nil {
+                showingAlert = true
+            }
+        }
     }
 }
 
-// Custom Text Field Component
+// Custom Text Field Component (Keep these the same)
 struct SignUpTextField: View {
     let title: String
     @Binding var text: String
@@ -228,7 +281,7 @@ struct SignUpTextField: View {
     }
 }
 
-// Custom Password Field Component
+// Custom Password Field Component (Keep these the same)
 struct SignUpPasswordField: View {
     let title: String
     @Binding var text: String
@@ -255,7 +308,7 @@ struct SignUpPasswordField: View {
     }
 }
 
-struct SignUpView_Previews: PreviewProvider {
+struct UpdatedSignUpView_Previews: PreviewProvider {
     static var previews: some View {
         SignUpView()
     }

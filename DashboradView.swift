@@ -1,6 +1,9 @@
 import SwiftUI
 
 struct DashboardView: View {
+    // View model for restaurant data
+    @StateObject private var restaurantViewModel = RestaurantViewModel()
+    
     // For navigation
     @State private var navigateToRestaurants = false
     @State private var navigateToUserManagement = false
@@ -18,6 +21,7 @@ struct DashboardView: View {
                 
                 VStack(spacing: 0) {
                     // Header with menu and profile
+                    // Header with menu, profile, and logout button
                     HStack {
                         Button(action: {}) {
                             Image(systemName: "line.3.horizontal")
@@ -27,6 +31,21 @@ struct DashboardView: View {
                         
                         Spacer()
                         
+                        // Logout button
+                        Button(action: {
+                            UserSession.shared.logout()
+                            // Navigate back to login screen if needed
+                        }) {
+                            Text("Logout")
+                                .font(.subheadline)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.white.opacity(0.2))
+                                .cornerRadius(12)
+                        }
+                        .padding(.trailing, 8)
+                        
                         Image(systemName: "person.circle.fill")
                             .resizable()
                             .frame(width: 36, height: 36)
@@ -35,7 +54,6 @@ struct DashboardView: View {
                     .padding(.horizontal, 24)
                     .padding(.top, 16)
                     .padding(.bottom, 20)
-                    
                     // Main Content Area (White background)
                     ScrollView {
                         VStack(spacing: 24) {
@@ -50,7 +68,36 @@ struct DashboardView: View {
                             )
                             
                             // Popular Restaurants Section
-                            PopularRestaurantsSection()
+                            if restaurantViewModel.isLoading {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle())
+                                    .scaleEffect(1.5)
+                                    .frame(height: 200)
+                            } else if let errorMessage = restaurantViewModel.errorMessage {
+                                VStack(spacing: 10) {
+                                    Text("Error Loading Restaurants")
+                                        .font(.headline)
+                                        .foregroundColor(.red)
+                                    
+                                    Text(errorMessage)
+                                        .font(.subheadline)
+                                        .foregroundColor(.gray)
+                                        .multilineTextAlignment(.center)
+                                    
+                                    Button("Retry") {
+                                        restaurantViewModel.fetchRestaurants()
+                                    }
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 20)
+                                    .padding(.vertical, 8)
+                                    .background(Color(hex: "4D52C7"))
+                                    .cornerRadius(8)
+                                }
+                                .frame(height: 200)
+                                .padding()
+                            } else {
+                                PopularRestaurantsSection(restaurants: restaurantViewModel.restaurants)
+                            }
                             
                             Spacer(minLength: 40)
                         }
@@ -69,16 +116,21 @@ struct DashboardView: View {
                 UserManagementView()
             }
             .navigationBarHidden(true)
+            .onAppear {
+                restaurantViewModel.fetchRestaurants()
+            }
         }
     }
 }
 
 // Welcome Card Component
 struct WelcomeCard: View {
+    @StateObject private var userSession = UserSession.shared
+    
     var body: some View {
         ZStack(alignment: .topTrailing) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Welcome,")
+                Text("Welcome, \(userSession.fullName)")
                     .font(.subheadline)
                     .foregroundColor(.black.opacity(0.7))
                 
@@ -205,8 +257,8 @@ struct CategoryItem: View {
 
 // Restaurant List Section Component
 struct PopularRestaurantsSection: View {
-    // Dummy restaurant data
-    let restaurants = ["Restaurant A", "Restaurant B", "Restaurant C"]
+    // API data for restaurants
+    let restaurants: [RestaurantResponse]
     @State private var navigateToCreateRestaurant = false
     
     var body: some View {
@@ -224,16 +276,37 @@ struct PopularRestaurantsSection: View {
                     .foregroundColor(.gray)
             }
             
-            // Horizontal Restaurant Cards
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 16) {
-                    ForEach(restaurants, id: \.self) { restaurant in
-                        NavigationLink(destination: BranchListView(restaurantName: restaurant)) {
-                            RestaurantCard(restaurantName: restaurant)
+            if restaurants.isEmpty {
+                VStack(spacing: 16) {
+                    Image(systemName: "building.2")
+                        .font(.system(size: 50))
+                        .foregroundColor(.gray)
+                    
+                    Text("No Restaurants Yet")
+                        .font(.headline)
+                        .foregroundColor(.gray)
+                    
+                    Text("Create your first restaurant")
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
+                }
+                .frame(height: 140)
+                .frame(maxWidth: .infinity)
+            } else {
+                // Horizontal Restaurant Cards
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 16) {
+                        ForEach(restaurants, id: \.id) { restaurant in
+                            NavigationLink(destination: BranchListView(
+                                restaurantId: restaurant.id,
+                                restaurantName: restaurant.name
+                            )) {
+                                RestaurantCard(restaurant: restaurant)
+                            }
                         }
                     }
+                    .padding(.vertical, 8)
                 }
-                .padding(.vertical, 8)
             }
             
             // Button to create a new restaurant
@@ -259,20 +332,27 @@ struct PopularRestaurantsSection: View {
 
 // Restaurant Card Component for Horizontal Slider
 struct RestaurantCard: View {
-    let restaurantName: String
+    let restaurant: RestaurantResponse
     
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Spacer()
             
-            Text(restaurantName)
+            Text(restaurant.name)
                 .font(.headline)
                 .fontWeight(.bold)
                 .foregroundColor(.black)
             
-            Text("Tap to view")
-                .font(.subheadline)
-                .foregroundColor(.gray)
+            if !restaurant.cuisine.isEmpty {
+                Text(restaurant.cuisine)
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+                    .lineLimit(1)
+            } else {
+                Text("Tap to view")
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+            }
         }
         .padding(20)
         .frame(width: 180, height: 140)
@@ -294,13 +374,5 @@ struct RestaurantCard: View {
                 .padding([.top, .trailing], 15)
             }
         )
-    }
-}
-
-// Note: Color extension is imported from ColorExtension.swift
-
-struct DashboardView_Previews: PreviewProvider {
-    static var previews: some View {
-        DashboardView()
     }
 }

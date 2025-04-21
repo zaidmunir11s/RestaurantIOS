@@ -28,7 +28,9 @@ enum DishSubcategory: String, CaseIterable, Identifiable {
 // MARK: - Main MenuScreenView
 
 struct MenuScreenView: View {
-    let branchName: String
+    let branchId: String
+      let branchName: String
+      let restaurantId: String
     
     // Dummy data for Deals.
     let dealItems = [
@@ -408,9 +410,3 @@ struct AddCategoryView: View {
 }
 
 // Note: Color extension is imported from ColorExtension.swift
-
-struct MenuScreenView_Previews: PreviewProvider {
-    static var previews: some View {
-        MenuScreenView(branchName: "Main Branch")
-    }
-}

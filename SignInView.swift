@@ -1,12 +1,13 @@
 import SwiftUI
 
 struct SignInView: View {
+    @StateObject private var userSession = UserSession.shared
+    
     @State private var email: String = ""
     @State private var password: String = ""
-    @State private var navigateToDashboard = false
-    @State private var navigateToSignUp = false
     @State private var rememberMe = false
-
+    @State private var showingAlert = false
+    
     var body: some View {
         NavigationStack {
             ZStack {
@@ -122,25 +123,53 @@ struct SignInView: View {
                         }
                         .padding(.vertical, 10)
                         
+                        // Error message if there is one
+                        if let error = userSession.error {
+                            Text(error)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                                .padding(.vertical, 5)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        
                         // Sign In Button
                         Button(action: {
-                            navigateToDashboard = true
+                            Task {
+                                await userSession.login(email: email, password: password)
+                            }
                         }) {
-                            Text("Sign In")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(
-                                    LinearGradient(
-                                        gradient: Gradient(colors: [Color(hex: "4D52C7"), Color(hex: "5C65DF")]),
-                                        startPoint: .leading,
-                                        endPoint: .trailing
+                            if userSession.isLoading {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(
+                                        LinearGradient(
+                                            gradient: Gradient(colors: [Color(hex: "4D52C7"), Color(hex: "5C65DF")]),
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
                                     )
-                                )
-                                .cornerRadius(12)
-                                .shadow(color: Color(hex: "4D52C7").opacity(0.3), radius: 10, x: 0, y: 5)
+                                    .cornerRadius(12)
+                                    .shadow(color: Color(hex: "4D52C7").opacity(0.3), radius: 10, x: 0, y: 5)
+                            } else {
+                                Text("Sign In")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(
+                                        LinearGradient(
+                                            gradient: Gradient(colors: [Color(hex: "4D52C7"), Color(hex: "5C65DF")]),
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
+                                    )
+                                    .cornerRadius(12)
+                                    .shadow(color: Color(hex: "4D52C7").opacity(0.3), radius: 10, x: 0, y: 5)
+                            }
                         }
+                        .disabled(userSession.isLoading)
                         .padding(.top, 10)
                         
                         // Or Divider
@@ -161,9 +190,7 @@ struct SignInView: View {
                         .padding(.vertical, 15)
                         
                         // Sign Up button
-                        Button(action: {
-                            navigateToSignUp = true
-                        }) {
+                        NavigationLink(destination: SignUpView()) {
                             HStack(spacing: 8) {
                                 Text("Don't have an account?")
                                     .foregroundColor(.gray)
@@ -182,15 +209,24 @@ struct SignInView: View {
                     .background(Color(hex: "EFF1FA"))
                     .cornerRadius(30, corners: [.topLeft, .topRight])
                 }
-                .navigationDestination(isPresented: $navigateToDashboard) {
-                    DashboardView()
-                }
-                .navigationDestination(isPresented: $navigateToSignUp) {
-                    SignUpView()
-                }
             }
             .navigationBarHidden(true)
             .ignoresSafeArea(.keyboard)
+            .alert(isPresented: $showingAlert) {
+                Alert(
+                    title: Text("Error"),
+                    message: Text(userSession.error ?? "Unknown error"),
+                    dismissButton: .default(Text("OK"))
+                )
+            }
+            .onChange(of: userSession.error) { _, newValue in
+                if newValue != nil {
+                    showingAlert = true
+                }
+            }
+            .navigationDestination(isPresented: .constant(userSession.isLoggedIn)) {
+                DashboardView()
+            }
         }
     }
 }
