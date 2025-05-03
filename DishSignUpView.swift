@@ -2,28 +2,29 @@ import SwiftUI
 import QuickLook
 import UniformTypeIdentifiers
 
-// Custom QLPreviewItem for USDZ files.
-class USDZPreviewItem: NSObject, QLPreviewItem {
-    let url: URL
-    init(url: URL) { self.url = url }
-    var previewItemURL: URL? { url }
-    var previewItemContentType: String { UTType.usdz.identifier }
-}
-
 struct DishSignUpView: View {
     // The captured USDZ file URL.
     let capturedUSDZURL: URL
     @Environment(\.dismiss) private var dismiss
     @Environment(\.presentationMode) var presentationMode
-
+    
+    // View model
+    @StateObject private var menuViewModel = MenuViewModel()
+    @StateObject private var restaurantViewModel = RestaurantViewModel()
+    
     // Dish details.
     @State private var dishTitle: String = ""
     @State private var dishPrice: String = ""
     @State private var dishDescription: String = ""
-    @State private var dishCategory: String = "Fast Food"
+    @State private var dishCategory: String = ""
     @State private var isVegetarian: Bool = false
     @State private var calories: String = ""
     @State private var ingredients: String = ""
+    
+    // For restaurant/branch selection
+    @State private var selectedRestaurantId: String = ""
+    @State private var selectedRestaurantName: String = ""
+    @State private var selectedBranchId: String? = nil
     
     // For image preview
     @State private var selectedURL: URL? = nil
@@ -32,9 +33,7 @@ struct DishSignUpView: View {
     // Form validation
     @State private var showError: Bool = false
     @State private var errorMessage: String? = nil
-    
-    // Available categories
-    let categories = ["Fast Food", "Drinks", "Desserts", "Main Course", "Appetizers"]
+    @State private var showSuccess: Bool = false
     
     var body: some View {
         ZStack {
@@ -156,6 +155,52 @@ struct DishSignUpView: View {
                         .padding(.horizontal, 20)
                         .padding(.top, 20)
                         
+                        // Restaurant Selection
+                        FormCard(title: "Restaurant Information") {
+                            if restaurantViewModel.isLoading {
+                                HStack {
+                                    Spacer()
+                                    ProgressView()
+                                    Spacer()
+                                }
+                                .padding()
+                                .background(Color.white)
+                                .cornerRadius(12)
+                            } else {
+                                // Restaurant Picker
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Restaurant")
+                                        .font(.subheadline)
+                                        .foregroundColor(Color.gray)
+                                    
+                                    Picker("Select Restaurant", selection: $selectedRestaurantId) {
+                                        Text("Select a restaurant").tag("")
+                                        ForEach(restaurantViewModel.restaurants, id: \.id) { restaurant in
+                                            Text(restaurant.name).tag(restaurant.id)
+                                        }
+                                    }
+                                    .onChange(of: selectedRestaurantId) { newId in
+                                        if let restaurant = restaurantViewModel.restaurants.first(where: { $0.id == newId }) {
+                                            selectedRestaurantName = restaurant.name
+                                            
+                                            // Reset branch selection
+                                            selectedBranchId = nil
+                                            
+                                            // Fetch categories for this restaurant
+                                            if !newId.isEmpty {
+                                                menuViewModel.fetchCategories(restaurantId: newId)
+                                            }
+                                        }
+                                    }
+                                    .pickerStyle(MenuPickerStyle())
+                                    .padding()
+                                    .background(Color.white)
+                                    .cornerRadius(12)
+                                    .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
+                                }
+                            }
+                        }
+                        
                         // Dish Details Form
                         FormCard(title: "Basic Details") {
                             // Dish Name
@@ -165,7 +210,23 @@ struct DishSignUpView: View {
                             FormTextField(title: "Price", text: $dishPrice, icon: "dollarsign.circle", keyboardType: .decimalPad)
                             
                             // Category Picker
-                            FormPickerField(title: "Category", selection: $dishCategory, options: categories, icon: "tag")
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Category")
+                                    .font(.subheadline)
+                                    .foregroundColor(Color.gray)
+                                
+                                Picker("Select Category", selection: $dishCategory) {
+                                    Text("Select a category").tag("")
+                                    ForEach(menuViewModel.categories, id: \.self) { category in
+                                        Text(category).tag(category)
+                                    }
+                                }
+                                .pickerStyle(MenuPickerStyle())
+                                .padding()
+                                .background(Color.white)
+                                .cornerRadius(12)
+                                .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
+                            }
                             
                             // Vegetarian Toggle
                             HStack {
@@ -182,288 +243,203 @@ struct DishSignUpView: View {
                                     .toggleStyle(SwitchToggleStyle(tint: Color(hex: "4D52C7")))
                             }
                             .padding()
-                            .background(Color.white)
-                            .cornerRadius(12)
-                            .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
-                        }
-                        
-                        // Description & Nutrition
-                        FormCard(title: "Description & Nutrition") {
-                            // Description
-                            FormTextAreaField(title: "Description", text: $dishDescription, icon: "text.alignleft")
-                            
-                            // Calories
-                            FormTextField(title: "Calories", text: $calories, icon: "flame.fill", keyboardType: .numberPad)
-                            
-                            // Ingredients
-                            FormTextAreaField(title: "Ingredients", text: $ingredients, icon: "list.bullet")
-                        }
-                        
-                        // Error Message
-                        if showError, let errorMessage = errorMessage {
-                            Text(errorMessage)
-                                .font(.subheadline)
-                                .foregroundColor(.red)
-                                .padding()
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color.red.opacity(0.1))
-                                .cornerRadius(10)
-                                .padding(.horizontal, 20)
-                        }
-                        
-                        // Save and Cancel Buttons
-                        VStack(spacing: 15) {
-                            Button(action: {
-                                validateAndSave()
-                            }) {
-                                HStack {
-                                    Image(systemName: "checkmark.circle.fill")
-                                    Text("Save Dish")
+                                                        .background(Color.white)
+                                                        .cornerRadius(12)
+                                                        .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
+                                                    }
+                                                    
+                                                    // Description & Nutrition
+                                                    FormCard(title: "Description & Nutrition") {
+                                                        // Description
+                                                        FormTextAreaField(title: "Description", text: $dishDescription, icon: "text.alignleft")
+                                                        
+                                                        // Calories
+                                                        FormTextField(title: "Calories", text: $calories, icon: "flame.fill", keyboardType: .numberPad)
+                                                        
+                                                        // Ingredients
+                                                        FormTextAreaField(title: "Ingredients", text: $ingredients, icon: "list.bullet")
+                                                    }
+                                                    
+                                                    // Error Message
+                                                    if showError, let errorMessage = errorMessage {
+                                                        Text(errorMessage)
+                                                            .font(.subheadline)
+                                                            .foregroundColor(.red)
+                                                            .padding()
+                                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                                            .background(Color.red.opacity(0.1))
+                                                            .cornerRadius(10)
+                                                            .padding(.horizontal, 20)
+                                                    }
+                                                    
+                                                    // Success Message
+                                                    if showSuccess {
+                                                        Text("Dish created successfully!")
+                                                            .font(.subheadline)
+                                                            .foregroundColor(.green)
+                                                            .padding()
+                                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                                            .background(Color.green.opacity(0.1))
+                                                            .cornerRadius(10)
+                                                            .padding(.horizontal, 20)
+                                                    }
+                                                    
+                                                    // Save and Cancel Buttons
+                                                    VStack(spacing: 15) {
+                                                        Button(action: {
+                                                            validateAndSave()
+                                                        }) {
+                                                            HStack {
+                                                                Image(systemName: "checkmark.circle.fill")
+                                                                Text("Save Dish")
+                                                            }
+                                                            .font(.headline)
+                                                            .foregroundColor(.white)
+                                                            .frame(maxWidth: .infinity)
+                                                            .padding()
+                                                            .background(
+                                                                LinearGradient(
+                                                                    gradient: Gradient(colors: [Color(hex: "4D52C7"), Color(hex: "5C65DF")]),
+                                                                    startPoint: .leading,
+                                                                    endPoint: .trailing
+                                                                )
+                                                            )
+                                                            .cornerRadius(16)
+                                                            .shadow(color: Color(hex: "4D52C7").opacity(0.3), radius: 10, x: 0, y: 5)
+                                                        }
+                                                        
+                                                        Button(action: {
+                                                            dismiss()
+                                                        }) {
+                                                            Text("Cancel")
+                                                                .font(.headline)
+                                                                .foregroundColor(Color(hex: "4D52C7"))
+                                                                .frame(maxWidth: .infinity)
+                                                                .padding()
+                                                                .background(Color.white)
+                                                                .cornerRadius(16)
+                                                                .overlay(
+                                                                    RoundedRectangle(cornerRadius: 16)
+                                                                        .stroke(Color(hex: "4D52C7"), lineWidth: 1)
+                                                                )
+                                                        }
+                                                    }
+                                                    .padding(.horizontal, 20)
+                                                    .padding(.vertical, 10)
+                                                }
+                                                .padding(.bottom, 30)
+                                            }
+                                        }
+                                    }
+                                    .navigationBarHidden(true)
+                                    .quickLookPreview($selectedURL) // Uses the system's Quick Look with AR functionality
+                                    .navigationDestination(isPresented: $navigationToDashboard) {
+                                        DashboardView()
+                                    }
+                                    .interactiveDismissDisabled() // This prevents slide-down dismissal
+                                    .onAppear {
+                                        // Fetch restaurants when view appears
+                                        restaurantViewModel.fetchRestaurants()
+                                    }
                                 }
-                                .font(.headline)
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(
-                                    LinearGradient(
-                                        gradient: Gradient(colors: [Color(hex: "4D52C7"), Color(hex: "5C65DF")]),
-                                        startPoint: .leading,
-                                        endPoint: .trailing
+                                
+                                private func validateAndSave() {
+                                    // Reset error
+                                    errorMessage = nil
+                                    showError = false
+                                    showSuccess = false
+                                    
+                                    // Validation
+                                    if selectedRestaurantId.isEmpty {
+                                        errorMessage = "Please select a restaurant"
+                                        showError = true
+                                        return
+                                    }
+                                    
+                                    if dishTitle.isEmpty {
+                                        errorMessage = "Please enter a dish name"
+                                        showError = true
+                                        return
+                                    }
+                                    
+                                    if dishPrice.isEmpty {
+                                        errorMessage = "Please enter a price"
+                                        showError = true
+                                        return
+                                    }
+                                    
+                                    if dishCategory.isEmpty {
+                                        errorMessage = "Please select a category"
+                                        showError = true
+                                        return
+                                    }
+                                    
+                                    // Price validation
+                                    let priceString = dishPrice.replacingOccurrences(of: "$", with: "")
+                                    guard let price = Double(priceString), price > 0 else {
+                                        errorMessage = "Price must be greater than zero"
+                                        showError = true
+                                        return
+                                    }
+                                    
+                                    // Create the menu item object
+                                    let menuItem = CreateMenuItemModel(
+                                        title: dishTitle,
+                                        description: dishDescription,
+                                        price: price,
+                                        category: dishCategory,
+                                        status: "active",
+                                        restaurantId: selectedRestaurantId,
+                                        branchId: selectedBranchId,
+                                        imageUrl: nil,
+                                        modelUrl: nil, // Will be uploaded separately
+                                        isVegetarian: isVegetarian,
+                                        isVegan: false,
+                                        isGlutenFree: false,
+                                        featured: false
                                     )
-                                )
-                                .cornerRadius(16)
-                                .shadow(color: Color(hex: "4D52C7").opacity(0.3), radius: 10, x: 0, y: 5)
+                                    
+                                    // Get the 3D model data
+                                    guard let modelData = try? Data(contentsOf: capturedUSDZURL) else {
+                                        errorMessage = "Error reading model data"
+                                        showError = true
+                                        return
+                                    }
+                                    
+                                    // Save the menu item
+                                    Task {
+                                        do {
+                                            let result = await menuViewModel.createMenuItem(menuItem: menuItem, modelData: modelData)
+                                            
+                                            switch result {
+                                            case .success:
+                                                DispatchQueue.main.async {
+                                                    showSuccess = true
+                                                    // Reset form fields after successful save
+                                                    dishTitle = ""
+                                                    dishPrice = ""
+                                                    dishDescription = ""
+                                                    dishCategory = ""
+                                                    isVegetarian = false
+                                                    calories = ""
+                                                    ingredients = ""
+                                                    
+                                                    // Automatically navigate back after short delay
+                                                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                                        navigationToDashboard = true
+                                                    }
+                                                }
+                                            case .failure(let error):
+                                                DispatchQueue.main.async {
+                                                    if let apiError = error as? APIError {
+                                                        errorMessage = apiError.message
+                                                    } else {
+                                                        errorMessage = error.localizedDescription
+                                                    }
+                                                    showError = true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
-                            
-                            Button(action: {
-                                dismiss()
-                            }) {
-                                Text("Cancel")
-                                    .font(.headline)
-                                    .foregroundColor(Color(hex: "4D52C7"))
-                                    .frame(maxWidth: .infinity)
-                                    .padding()
-                                    .background(Color.white)
-                                    .cornerRadius(16)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 16)
-                                            .stroke(Color(hex: "4D52C7"), lineWidth: 1)
-                                    )
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 10)
-                    }
-                    .padding(.bottom, 30)
-                }
-            }
-        }
-        .navigationBarHidden(true)
-        .quickLookPreview($selectedURL) // Uses the system's Quick Look with AR functionality
-        .navigationDestination(isPresented: $navigationToDashboard) {
-            DashboardView()
-        }
-        .interactiveDismissDisabled() // This prevents slide-down dismissal
-    }
-    
-    private func validateAndSave() {
-        // Reset error
-        errorMessage = nil
-        showError = false
-        
-        // Validation
-        if dishTitle.isEmpty {
-            errorMessage = "Please enter a dish name"
-            showError = true
-            return
-        }
-        
-        if dishPrice.isEmpty {
-            errorMessage = "Please enter a price"
-            showError = true
-            return
-        }
-        
-        // Price validation
-        if let price = Double(dishPrice.replacingOccurrences(of: "$", with: "")), price <= 0 {
-            errorMessage = "Price must be greater than zero"
-            showError = true
-            return
-        }
-        
-        // Save logic would go here...
-        print("Saving dish: \(dishTitle), \(dishPrice), \(dishCategory)")
-        
-        // Navigate to dashboard or menu after saving
-        navigationToDashboard = true
-    }
-}
-
-// Form Card Component
-struct FormCard<Content: View>: View {
-    let title: String
-    let content: Content
-    
-    init(title: String, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.content = content()
-    }
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 15) {
-            Text(title)
-                .font(.headline)
-                .foregroundColor(Color(hex: "4D52C7"))
-                .padding(.horizontal, 20)
-            
-            VStack(spacing: 15) {
-                content
-            }
-            .padding(15)
-            .background(Color(hex: "F9F9FB"))
-            .cornerRadius(20)
-            .padding(.horizontal, 20)
-        }
-    }
-}
-
-// Form Text Field Component
-struct FormTextField: View {
-    let title: String
-    @Binding var text: String
-    let icon: String
-    var keyboardType: UIKeyboardType = .default
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.subheadline)
-                .foregroundColor(Color.gray)
-            
-            HStack {
-                Image(systemName: icon)
-                    .foregroundColor(Color(hex: "4D52C7"))
-                    .frame(width: 24, height: 24)
-                
-                TextField("Enter \(title.lowercased())", text: $text)
-                    .keyboardType(keyboardType)
-                    .foregroundColor(Color(hex: "333333"))
-            }
-            .padding()
-            .background(Color.white)
-            .cornerRadius(12)
-            .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
-        }
-    }
-}
-
-// Form Text Area Field Component
-struct FormTextAreaField: View {
-    let title: String
-    @Binding var text: String
-    let icon: String
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.subheadline)
-                .foregroundColor(Color.gray)
-            
-            HStack(alignment: .top) {
-                Image(systemName: icon)
-                    .foregroundColor(Color(hex: "4D52C7"))
-                    .frame(width: 24, height: 24)
-                    .padding(.top, 12)
-                
-                TextEditor(text: $text)
-                    .frame(minHeight: 100)
-                    .foregroundColor(Color(hex: "333333"))
-                    .padding(8)
-                    .background(Color.white)
-                    .cornerRadius(8)
-            }
-            .padding()
-            .background(Color.white)
-            .cornerRadius(12)
-            .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
-        }
-    }
-}
-
-// Form Picker Field Component
-struct FormPickerField: View {
-    let title: String
-    @Binding var selection: String
-    let options: [String]
-    let icon: String
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.subheadline)
-                .foregroundColor(Color.gray)
-            
-            HStack {
-                Image(systemName: icon)
-                    .foregroundColor(Color(hex: "4D52C7"))
-                    .frame(width: 24, height: 24)
-                
-                Picker(title, selection: $selection) {
-                    ForEach(options, id: \.self) { option in
-                        Text(option).tag(option)
-                    }
-                }
-                .pickerStyle(MenuPickerStyle())
-                .foregroundColor(Color(hex: "333333"))
-            }
-            .padding()
-            .background(Color.white)
-            .cornerRadius(12)
-            .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
-        }
-    }
-}
-
-// Dish Preview Card for QuickLook
-struct DishPreviewCard: UIViewControllerRepresentable {
-    let modelURL: URL
-    
-    func makeUIViewController(context: Context) -> QLPreviewController {
-        let controller = QLPreviewController()
-        controller.dataSource = context.coordinator
-        return controller
-    }
-    
-    func updateUIViewController(_ uiViewController: QLPreviewController, context: Context) {}
-    
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
-    }
-    
-    class Coordinator: NSObject, QLPreviewControllerDataSource {
-        let parent: DishPreviewCard
-        
-        init(_ parent: DishPreviewCard) {
-            self.parent = parent
-        }
-        
-        func numberOfPreviewItems(in controller: QLPreviewController) -> Int {
-            return 1
-        }
-        
-        func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem {
-            return parent.modelURL as QLPreviewItem
-        }
-    }
-}
-
-// Note: Color extension is imported from ColorExtension.swift
-
-struct DishSignUpView_Previews: PreviewProvider {
-    static var previews: some View {
-        // For preview purposes, simulate a file URL in the Documents directory.
-        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let dummyURL = documentsDirectory.appendingPathComponent("model-mobile.usdz")
-        DishSignUpView(capturedUSDZURL: dummyURL)
-    }
-}

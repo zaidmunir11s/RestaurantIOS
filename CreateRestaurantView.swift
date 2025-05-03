@@ -15,6 +15,10 @@ struct CreateRestaurantView: View {
     @State private var website: String = ""
     @State private var description: String = ""
     
+    // Image selection
+    @State private var selectedImage: UIImage? = nil
+    @State private var showImagePicker = false
+    
     // UI state
     @State private var isLoading = false
     @State private var showAlert = false
@@ -73,6 +77,64 @@ struct CreateRestaurantView: View {
                         )
                     }
                     
+                    // Restaurant Image Section
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Restaurant Image")
+                            .font(.headline)
+                            .padding(.horizontal, 20)
+                        
+                        ZStack {
+                            if let selectedImage = selectedImage {
+                                Image(uiImage: selectedImage)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(height: 200)
+                                    .frame(maxWidth: .infinity)
+                                    .clipped()
+                                    .cornerRadius(12)
+                                    .overlay(
+                                        Button(action: {
+                                            self.selectedImage = nil
+                                        }) {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .font(.system(size: 22))
+                                                .foregroundColor(.white)
+                                                .padding(8)
+                                                .background(Color.black.opacity(0.6))
+                                                .clipShape(Circle())
+                                        }
+                                        .padding(10),
+                                        alignment: .topTrailing
+                                    )
+                            } else {
+                                Button(action: {
+                                    showImagePicker = true
+                                }) {
+                                    VStack(spacing: 12) {
+                                        Image(systemName: "photo.on.rectangle.angled")
+                                            .font(.system(size: 40))
+                                            .foregroundColor(Color(hex: "4D52C7"))
+                                        
+                                        Text("Tap to add restaurant image")
+                                            .font(.headline)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 200)
+                                    .background(Color.white)
+                                    .cornerRadius(12)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(Color(hex: "4D52C7").opacity(0.3), lineWidth: 1)
+                                    )
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                        .sheet(isPresented: $showImagePicker) {
+                            ImagePicker(selectedImage: $selectedImage)
+                        }
+                    }
+                    
                     // Form Fields
                     GroupBox(label: Text("Basic Information").bold()) {
                         VStack(spacing: 20) {
@@ -113,7 +175,7 @@ struct CreateRestaurantView: View {
                     Button(action: {
                         saveRestaurant()
                     }) {
-                        if isLoading {
+                        if viewModel.isLoading {
                             ProgressView()
                                 .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                 .frame(maxWidth: .infinity)
@@ -146,7 +208,7 @@ struct CreateRestaurantView: View {
                             .shadow(color: Color(hex: "4D52C7").opacity(0.3), radius: 10, x: 0, y: 5)
                         }
                     }
-                    .disabled(isLoading)
+                    .disabled(viewModel.isLoading)
                     
                     // Cancel Button
                     Button(action: {
@@ -197,8 +259,6 @@ struct CreateRestaurantView: View {
             return
         }
         
-        isLoading = true
-        
         let restaurant = CreateRestaurantModel(
             name: restaurantName,
             cuisine: cuisine,
@@ -214,12 +274,16 @@ struct CreateRestaurantView: View {
             imageUrl: nil
         )
         
+        // Extract image data if available
+        var imageData: Data? = nil
+        if let selectedImage = selectedImage {
+            imageData = selectedImage.jpegData(compressionQuality: 0.8)
+        }
+        
         Task {
-            let result = await viewModel.createRestaurant(restaurant: restaurant)
+            let result = await viewModel.createRestaurant(restaurant: restaurant, imageData: imageData)
             
             DispatchQueue.main.async {
-                isLoading = false
-                
                 switch result {
                 case .success(_):
                     isSuccess = true
@@ -240,46 +304,38 @@ struct CreateRestaurantView: View {
     }
 }
 
-// Custom Input Field Component (keep this)
-struct InputField: View {
-    let title: String
-    @Binding var text: String
-    let icon: String
-    var isMultiline: Bool = false
-    var keyboardType: UIKeyboardType = .default
+// Image Picker
+struct ImagePicker: UIViewControllerRepresentable {
+    @Binding var selectedImage: UIImage?
+    @Environment(\.presentationMode) var presentationMode
     
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.subheadline)
-                .foregroundColor(.gray)
-            
-            HStack(alignment: isMultiline ? .top : .center, spacing: 12) {
-                Image(systemName: icon)
-                    .foregroundColor(Color(hex: "4D52C7"))
-                    .frame(width: 24, height: 24)
-                
-                if isMultiline {
-                    TextEditor(text: $text)
-                        .frame(minHeight: 100)
-                        .cornerRadius(8)
-                } else {
-                    TextField("", text: $text)
-                        .keyboardType(keyboardType)
-                }
-            }
-            .padding()
-            .background(Color.white)
-            .cornerRadius(12)
-            .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
-        }
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.delegate = context.coordinator
+        picker.allowsEditing = true
+        return picker
     }
-}
-
-struct CreateRestaurantView_Previews: PreviewProvider {
-    static var previews: some View {
-        NavigationStack {
-            CreateRestaurantView()
+    
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: ImagePicker
+        
+        init(_ parent: ImagePicker) {
+            self.parent = parent
+        }
+        
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+            if let editedImage = info[.editedImage] as? UIImage {
+                parent.selectedImage = editedImage
+            } else if let originalImage = info[.originalImage] as? UIImage {
+                parent.selectedImage = originalImage
+            }
+            parent.presentationMode.wrappedValue.dismiss()
         }
     }
 }

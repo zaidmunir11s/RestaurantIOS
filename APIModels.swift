@@ -25,7 +25,55 @@ struct UserResponse: Codable {
         case permissions, branchPermissions, createdAt
     }
 }
+struct CreateBranchModel: Codable {
+    let name: String
+    let restaurantId: String
+    let address: String
+    let city: String
+    let state: String
+    let zipCode: String
+    let phone: String
+    let email: String
+    let managerId: String?
+    let openingTime: String?
+    let closingTime: String?
+    let weekdayHours: String?
+    let weekendHours: String?
+    let description: String?
+    let imageUrl: String?
+    let status: String?
+    let tableCount: Int?
+    let includeDefaultMenu: Bool?
+}
 
+struct BranchResponse: Codable {
+    let id: String
+    let name: String
+    let restaurantId: String
+    let address: String
+    let city: String
+    let state: String
+    let zipCode: String
+    let phone: String
+    let email: String
+    let managerId: String?
+    let openingTime: String
+    let closingTime: String
+    let weekdayHours: String
+    let weekendHours: String
+    let description: String
+    let imageUrl: String?
+    let status: String
+    let tableCount: Int
+    let createdAt: String
+    
+    enum CodingKeys: String, CodingKey {
+        case id = "_id"
+        case name, restaurantId, address, city, state, zipCode, phone, email
+        case managerId, openingTime, closingTime, weekdayHours, weekendHours
+        case description, imageUrl, status, tableCount, createdAt
+    }
+}
 struct Permissions: Codable {
     let manageUsers: Bool
     let manageRestaurants: Bool
@@ -81,55 +129,6 @@ struct RestaurantResponse: Codable {
 
 // MARK: - Branch Models
 
-struct CreateBranchModel: Codable {
-    let name: String
-    let restaurantId: String
-    let address: String
-    let city: String
-    let state: String
-    let zipCode: String
-    let phone: String
-    let email: String
-    let managerId: String?
-    let openingTime: String?
-    let closingTime: String?
-    let weekdayHours: String?
-    let weekendHours: String?
-    let description: String?
-    let imageUrl: String?
-    let status: String?
-    let tableCount: Int?
-    let includeDefaultMenu: Bool?
-}
-
-struct BranchResponse: Codable {
-    let id: String
-    let name: String
-    let restaurantId: String
-    let address: String
-    let city: String
-    let state: String
-    let zipCode: String
-    let phone: String
-    let email: String
-    let managerId: String?
-    let openingTime: String
-    let closingTime: String
-    let weekdayHours: String
-    let weekendHours: String
-    let description: String
-    let imageUrl: String?
-    let status: String
-    let tableCount: Int
-    let createdAt: String
-    
-    enum CodingKeys: String, CodingKey {
-        case id = "_id"
-        case name, restaurantId, address, city, state, zipCode, phone, email
-        case managerId, openingTime, closingTime, weekdayHours, weekendHours
-        case description, imageUrl, status, tableCount, createdAt
-    }
-}
 
 // MARK: - Menu Item Models
 

@@ -33,6 +33,8 @@ struct ContentView: View {
                 CircularProgressView()
             }
         }
+        // Modify ContentView.swift's onChangeof showPreviewModel closure:
+
         .onChange(of: appModel.state) { _, newState in
             if newState == .failed {
                 showErrorAlert = true
@@ -44,7 +46,8 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showReconstructionView) {
             if let folderManager = appModel.scanFolderManager {
-                ReconstructionPrimaryView(outputFile: folderManager.modelsFolder.appendingPathComponent("model-mobile.usdz"))
+                let outputFile = folderManager.modelsFolder.appendingPathComponent("model-mobile.usdz")
+                ReconstructionPrimaryView(outputFile: outputFile)
             }
         }
         .alert(

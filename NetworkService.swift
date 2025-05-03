@@ -37,7 +37,7 @@ class NetworkService {
     static let shared = NetworkService()
     
     // Configure your base URL here
-    private let baseURL = "http://192.168.21.16:5000/api"
+     let baseURL = "http://172.18.99.189:5000/api"
     
     private init() {}
     
@@ -80,7 +80,384 @@ class NetworkService {
         return try await makeRequest(endpoint: endpoint, method: "POST", body: body)
     }
     
+    // MARK: - Menu Items Import
+    
+    func importMenuItems(
+        restaurantId: String,
+        branchId: String,
+        itemIds: [String],
+        token: String
+    ) async throws -> [MenuItemResponse] {
+        guard let url = URL(string: baseURL + "/menu/import") else {
+            throw APIError.invalidURL
+        }
+        
+        struct ImportRequest: Codable {
+            let restaurantId: String
+            let branchId: String
+            let itemIds: [String]
+        }
+        
+        let importRequest = ImportRequest(
+            restaurantId: restaurantId,
+            branchId: branchId,
+            itemIds: itemIds
+        )
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.addValue(token, forHTTPHeaderField: "x-auth-token")
+        
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        request.httpBody = try encoder.encode(importRequest)
+        
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            return try handleResponse(data: data, response: response)
+        } catch {
+            throw handleError(error)
+        }
+    }
+    
+    // MARK: - Branch Creation with Image
+    
+    func createBranchWithImage(branch: CreateBranchModel, imageData: Data, token: String) async throws -> BranchResponse {
+        guard let url = URL(string: baseURL + "/branches") else {
+            throw APIError.invalidURL
+        }
+        
+        // Create a multipart form request
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        
+        let boundary = "Boundary-\(UUID().uuidString)"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        
+        // Add auth token header
+        request.addValue(token, forHTTPHeaderField: "x-auth-token")
+        
+        // Create body
+        var body = Data()
+        
+        // Add text fields
+        let textFields: [String: String] = [
+            "name": branch.name,
+            "restaurantId": branch.restaurantId,
+            "address": branch.address,
+            "city": branch.city,
+            "state": branch.state,
+            "zipCode": branch.zipCode ?? "",
+            "phone": branch.phone,
+            "email": branch.email ?? "",
+            "openingTime": branch.openingTime ?? "08:00",
+            "closingTime": branch.closingTime ?? "22:00",
+            "weekdayHours": branch.weekdayHours ?? "08:00 AM - 10:00 PM",
+            "weekendHours": branch.weekendHours ?? "09:00 AM - 11:00 PM",
+            "description": branch.description ?? "",
+            "status": branch.status ?? "active",
+            "tableCount": String(branch.tableCount ?? 10)
+        ]
+        
+        // Add includeDefaultMenu field
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"includeDefaultMenu\"\r\n\r\n".data(using: .utf8)!)
+        body.append("\(branch.includeDefaultMenu ?? true)\r\n".data(using: .utf8)!)
+        
+        for (key, value) in textFields {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(key)\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(value)\r\n".data(using: .utf8)!)
+        }
+        
+        // Add image
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"image\"; filename=\"image.jpg\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+        body.append(imageData)
+        body.append("\r\n".data(using: .utf8)!)
+        
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+        
+        request.httpBody = body
+        
+        // Send the request
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            return try handleResponse(data: data, response: response)
+        } catch {
+            throw handleError(error)
+        }
+    }
+    
+    // Helper function for USDZ file upload
+    func getModelData(from url: URL) -> Data? {
+        do {
+            let data = try Data(contentsOf: url)
+            return data
+        } catch {
+            print("Error reading model file: \(error)")
+            return nil
+        }
+    }
+    
+    // MARK: - Menu Item with Model
+    
+    func uploadMenuItemWithModel(
+        menuItem: CreateMenuItemModel,
+        modelData: Data,
+        token: String,
+        endpoint: String = "/menu",
+        method: String = "POST"
+    ) async throws -> MenuItemResponse {
+        guard let url = URL(string: baseURL + endpoint) else {
+            throw APIError.invalidURL
+        }
+        
+        print("📡 Uploading model to: \(method) \(url.absoluteString)")
+        
+        // Create a multipart form request
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        
+        let boundary = "Boundary-\(UUID().uuidString)"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        
+        // Add auth token header
+        request.addValue(token, forHTTPHeaderField: "x-auth-token")
+        
+        // Create body
+        var body = Data()
+        
+        // Add the menu item JSON data
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        let menuItemData = try encoder.encode(menuItem)
+        let menuItemString = String(data: menuItemData, encoding: .utf8)!
+        
+        print("📤 Menu item JSON: \(menuItemString)")
+        
+        // Add JSON fields
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"title\"\r\n\r\n".data(using: .utf8)!)
+        body.append("\(menuItem.title)\r\n".data(using: .utf8)!)
+        
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"description\"\r\n\r\n".data(using: .utf8)!)
+        body.append("\(menuItem.description)\r\n".data(using: .utf8)!)
+        
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"price\"\r\n\r\n".data(using: .utf8)!)
+        body.append("\(menuItem.price)\r\n".data(using: .utf8)!)
+        
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"category\"\r\n\r\n".data(using: .utf8)!)
+        body.append("\(menuItem.category)\r\n".data(using: .utf8)!)
+        
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"status\"\r\n\r\n".data(using: .utf8)!)
+        body.append("\(menuItem.status ?? "active")\r\n".data(using: .utf8)!)
+        
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"restaurantId\"\r\n\r\n".data(using: .utf8)!)
+        body.append("\(menuItem.restaurantId)\r\n".data(using: .utf8)!)
+        
+        if let branchId = menuItem.branchId {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"branchId\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(branchId)\r\n".data(using: .utf8)!)
+        }
+        
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"isVegetarian\"\r\n\r\n".data(using: .utf8)!)
+        body.append("\(menuItem.isVegetarian ?? false)\r\n".data(using: .utf8)!)
+        
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"isVegan\"\r\n\r\n".data(using: .utf8)!)
+        body.append("\(menuItem.isVegan ?? false)\r\n".data(using: .utf8)!)
+        
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"isGlutenFree\"\r\n\r\n".data(using: .utf8)!)
+        body.append("\(menuItem.isGlutenFree ?? false)\r\n".data(using: .utf8)!)
+        
+        // Add model file
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"modelUrl\"; filename=\"model.usdz\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
+        body.append(modelData)
+        body.append("\r\n".data(using: .utf8)!)
+        
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+        
+        request.httpBody = body
+        
+        // Print body size
+        print("📤 Request body size: \(body.count) bytes")
+        
+        // Send the request
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw APIError.invalidResponse
+            }
+            
+            print("📥 Response status code: \(httpResponse.statusCode)")
+            
+            // Debug: Print response body
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("📥 Response data: \(responseString)")
+            }
+            
+            return try handleResponse(data: data, response: response)
+        } catch {
+            print("❌ Error uploading model: \(error)")
+            throw handleError(error)
+        }
+    }
+    
     // MARK: - Restaurants
+    
+    func createRestaurantWithImage(restaurant: CreateRestaurantModel, imageData: Data, token: String) async throws -> RestaurantResponse {
+        guard let url = URL(string: baseURL + "/restaurants") else {
+            throw APIError.invalidURL
+        }
+        
+        // Create a multipart form request
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        
+        let boundary = "Boundary-\(UUID().uuidString)"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        
+        // Add auth token header
+        request.addValue(token, forHTTPHeaderField: "x-auth-token")
+        
+        // Create body
+        var body = Data()
+        
+        // Add text fields
+        let textFields: [String: String] = [
+            "name": restaurant.name,
+            "cuisine": restaurant.cuisine,
+            "address": restaurant.address,
+            "city": restaurant.city,
+            "state": restaurant.state,
+            "zipCode": restaurant.zipCode,
+            "phone": restaurant.phone,
+            "email": restaurant.email,
+            "website": restaurant.website,
+            "description": restaurant.description,
+            "status": restaurant.status ?? "active"
+        ]
+        
+        for (key, value) in textFields {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(key)\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(value)\r\n".data(using: .utf8)!)
+        }
+        
+        // Add image
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"image\"; filename=\"image.jpg\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+        body.append(imageData)
+        body.append("\r\n".data(using: .utf8)!)
+        
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+        
+        request.httpBody = body
+        
+        // Send the request
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            return try handleResponse(data: data, response: response)
+        } catch {
+            throw handleError(error)
+        }
+    }
+    
+    func updateRestaurant(id: String, restaurant: CreateRestaurantModel, token: String) async throws -> RestaurantResponse {
+        guard let url = URL(string: baseURL + "/restaurants/\(id)") else {
+            throw APIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.addValue(token, forHTTPHeaderField: "x-auth-token")
+        
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        request.httpBody = try encoder.encode(restaurant)
+        
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            return try handleResponse(data: data, response: response)
+        } catch {
+            throw handleError(error)
+        }
+    }
+    
+    func updateRestaurantWithImage(id: String, restaurant: CreateRestaurantModel, imageData: Data, token: String) async throws -> RestaurantResponse {
+        guard let url = URL(string: baseURL + "/restaurants/\(id)") else {
+            throw APIError.invalidURL
+        }
+        
+        // Create a multipart form request
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        
+        let boundary = "Boundary-\(UUID().uuidString)"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        
+        // Add auth token header
+        request.addValue(token, forHTTPHeaderField: "x-auth-token")
+        
+        // Create body
+        var body = Data()
+        
+        // Add text fields
+        let textFields: [String: String] = [
+            "name": restaurant.name,
+            "cuisine": restaurant.cuisine,
+            "address": restaurant.address,
+            "city": restaurant.city,
+            "state": restaurant.state,
+            "zipCode": restaurant.zipCode,
+            "phone": restaurant.phone,
+            "email": restaurant.email,
+            "website": restaurant.website,
+            "description": restaurant.description,
+            "status": restaurant.status ?? "active"
+        ]
+        
+        for (key, value) in textFields {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(key)\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(value)\r\n".data(using: .utf8)!)
+        }
+        
+        // Add image
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"image\"; filename=\"image.jpg\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+        body.append(imageData)
+        body.append("\r\n".data(using: .utf8)!)
+        
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+        
+        request.httpBody = body
+        
+        // Send the request
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            return try handleResponse(data: data, response: response)
+        } catch {
+            throw handleError(error)
+        }
+    }
     
     func createRestaurant(restaurant: CreateRestaurantModel, token: String) async throws -> RestaurantResponse {
         let endpoint = "/restaurants"
@@ -101,7 +478,30 @@ class NetworkService {
     
     func createBranch(branch: CreateBranchModel, token: String) async throws -> BranchResponse {
         let endpoint = "/branches"
-        return try await makeRequest(endpoint: endpoint, method: "POST", body: branch, token: token)
+        
+        // Debug the restaurantId to ensure it matches what's expected
+        print("DEBUG: Creating branch with restaurant ID: '\(branch.restaurantId)'")
+        
+        // Create a modified model with restaurantId as String to match web app
+        var modifiedBranch = branch
+        
+        // Convert restaurantId to ensure proper format (matching web approach)
+        if var jsonData = try? JSONEncoder().encode(branch),
+           var jsonObj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+            // Ensure restaurantId is a string
+            if let restaurantId = jsonObj["restaurantId"] {
+                jsonObj["restaurantId"] = String(describing: restaurantId)
+            }
+            
+            // Re-encode with modified restaurantId
+            if let updatedJsonData = try? JSONSerialization.data(withJSONObject: jsonObj),
+               let updatedBranch = try? JSONDecoder().decode(CreateBranchModel.self, from: updatedJsonData) {
+                modifiedBranch = updatedBranch
+            }
+        }
+        
+        // Make the request with the modified branch data
+        return try await makeRequest(endpoint: endpoint, method: "POST", body: modifiedBranch, token: token)
     }
     
     func getBranches(restaurantId: String? = nil, token: String) async throws -> [BranchResponse] {
@@ -171,65 +571,6 @@ class NetworkService {
         return try await makeRequest(endpoint: endpoint, token: token)
     }
     
-    // MARK: - Private Helper Methods
-    
-    private func uploadMenuItemWithModel(
-        menuItem: CreateMenuItemModel,
-        modelData: Data,
-        token: String,
-        endpoint: String = "/menu",
-        method: String = "POST"
-    ) async throws -> MenuItemResponse {
-        guard let url = URL(string: baseURL + endpoint) else {
-            throw APIError.invalidURL
-        }
-        
-        // Create a multipart form request
-        var request = URLRequest(url: url)
-        request.httpMethod = method
-        
-        let boundary = "Boundary-\(UUID().uuidString)"
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        
-        // Add auth token header
-        request.addValue(token, forHTTPHeaderField: "x-auth-token")
-        
-        // Create body
-        var body = Data()
-        
-        // Add the menu item JSON data
-        let encoder = JSONEncoder()
-        encoder.keyEncodingStrategy = .convertToSnakeCase
-        let menuItemData = try encoder.encode(menuItem)
-        let menuItemString = String(data: menuItemData, encoding: .utf8)!
-        
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"menuItem\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: application/json\r\n\r\n".data(using: .utf8)!)
-        body.append(menuItemString.data(using: .utf8)!)
-        body.append("\r\n".data(using: .utf8)!)
-        
-        // Add model file
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"modelUrl\"; filename=\"model.usdz\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
-        body.append(modelData)
-        body.append("\r\n".data(using: .utf8)!)
-        
-        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
-        
-        request.httpBody = body
-        
-        // Send the request
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            
-            return try handleResponse(data: data, response: response)
-        } catch {
-            throw handleError(error)
-        }
-    }
-    
     // MARK: - Generic Request Methods
     
     // Overloaded version for GET requests with no body
@@ -251,7 +592,7 @@ class NetworkService {
     }
     
     // Main request method with body parameter
-    private func makeRequest<T: Decodable, U: Encodable>(
+    func makeRequest<T: Decodable, U: Encodable>(
         endpoint: String,
         method: String,
         body: U?,

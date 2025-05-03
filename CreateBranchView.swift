@@ -4,7 +4,9 @@ struct CreateBranchView: View {
     let restaurantId: String
     let restaurantName: String
     
-    @StateObject private var userSession = UserSession.shared
+    @StateObject private var viewModel = BranchViewModel()
+    
+    // Form fields
     @State private var branchName: String = ""
     @State private var address: String = ""
     @State private var city: String = ""
@@ -20,6 +22,7 @@ struct CreateBranchView: View {
     @State private var tableCount: String = "10"
     @State private var includeDefaultMenu: Bool = true
     
+    // UI state
     @State private var isLoading = false
     @State private var showAlert = false
     @State private var alertMessage = ""
@@ -58,7 +61,7 @@ struct CreateBranchView: View {
                                     Circle()
                                         .fill(Color(hex: "FF8A8A"))
                                         .frame(width: 20, height: 20)
-                                        
+                                    
                                     Circle()
                                         .fill(Color(hex: "F9D56E"))
                                         .frame(width: 40, height: 40)
@@ -205,81 +208,103 @@ struct CreateBranchView: View {
                 }
             )
         }
-        .navigationDestination(isPresented: $isSuccess) {
-            BranchListView(
-                restaurantId: restaurantId,
-                restaurantName: restaurantName
-            )
-        }
+        .navigationBarHidden(true)
     }
-    
     private func saveBranch() {
-        // Validation
-        if branchName.isEmpty || address.isEmpty || city.isEmpty || state.isEmpty || phone.isEmpty {
-            alertMessage = "Please fill in all required fields"
-            showAlert = true
-            return
-        }
-        
-        guard let token = userSession.authToken else {
-            alertMessage = "Authentication error. Please log in again."
-            showAlert = true
-            return
-        }
-        
-        // Convert tableCount string to Int
-        guard let tables = Int(tableCount) else {
-            alertMessage = "Please enter a valid number of tables"
-            showAlert = true
-            return
-        }
+        // Validation code...
         
         isLoading = true
         
-        let branch = CreateBranchModel(
-            name: branchName,
-            restaurantId: restaurantId,
-            address: address,
-            city: city,
-            state: state,
-            zipCode: zipCode,
-            phone: phone,
-            email: email,
-            managerId: nil,
-            openingTime: openingTime,
-            closingTime: closingTime,
-            weekdayHours: weekdayHours,
-            weekendHours: weekendHours,
-            description: description,
-            imageUrl: nil,
-            status: "active",
-            tableCount: tables,
-            includeDefaultMenu: includeDefaultMenu
-        )
+        // Clean the restaurant ID
+        let cleanRestaurantId = restaurantId.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Create a simple dictionary that matches exactly the format the web app sends
+        let branchData: [String: Any] = [
+            "name": branchName,
+            "restaurantId": cleanRestaurantId,
+            "address": address,
+            "city": city,
+            "state": state,
+            "zipCode": zipCode,
+            "phone": phone,
+            "email": email,
+            "openingTime": openingTime,
+            "closingTime": closingTime,
+            "weekdayHours": weekdayHours,
+            "weekendHours": weekendHours,
+            "description": description,
+            "status": "active",
+            "tableCount": Int(tableCount) ?? 10,
+            "includeDefaultMenu": includeDefaultMenu
+        ]
         
         Task {
             do {
-                let response = try await NetworkService.shared.createBranch(branch: branch, token: token)
+                let token = UserSession.shared.authToken ?? ""
                 
-                DispatchQueue.main.async {
-                    self.isLoading = false
-                    self.isSuccess = true
-                    self.alertMessage = "Branch created successfully!"
-                    self.showAlert = true
+                // Create request manually to match exactly what the web app does
+                let url = URL(string: "http://172.18.99.189:5000/api/branches")!
+                var request = URLRequest(url: url)
+                request.httpMethod = "POST"
+                request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.addValue(token, forHTTPHeaderField: "x-auth-token")
+                
+                // Convert dictionary to JSON data
+                let jsonData = try JSONSerialization.data(withJSONObject: branchData)
+                request.httpBody = jsonData
+                
+                // Print the exact JSON being sent
+                if let jsonString = String(data: jsonData, encoding: .utf8) {
+                    print("DEBUG: Exact JSON being sent: \(jsonString)")
                 }
-            } catch let error as APIError {
-                DispatchQueue.main.async {
-                    self.isLoading = false
-                    self.alertMessage = error.message
-                    self.showAlert = true
+                
+                // Make the request
+                let (data, response) = try await URLSession.shared.data(for: request)
+                
+                // Check response
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    throw APIError.invalidResponse
+                }
+                
+                print("DEBUG: Branch creation response status code: \(httpResponse.statusCode)")
+                
+                // Print response body
+                if let responseString = String(data: data, encoding: .utf8) {
+                    print("DEBUG: Response data: \(responseString)")
+                }
+                
+                if httpResponse.statusCode >= 200 && httpResponse.statusCode < 300 {
+                    DispatchQueue.main.async {
+                        self.isLoading = false
+                        self.isSuccess = true
+                        self.alertMessage = "Branch created successfully!"
+                        self.showAlert = true
+                    }
+                } else if httpResponse.statusCode == 404 {
+                    DispatchQueue.main.async {
+                        self.isLoading = false
+                        self.alertMessage = "Restaurant not found. Please check the restaurant ID."
+                        self.showAlert = true
+                    }
+                } else {
+                    DispatchQueue.main.async {
+                        self.isLoading = false
+                        self.alertMessage = "Error creating branch: Status code \(httpResponse.statusCode)"
+                        self.showAlert = true
+                    }
                 }
             } catch {
                 DispatchQueue.main.async {
                     self.isLoading = false
-                    self.alertMessage = "An unexpected error occurred"
+                    print("DEBUG: Error: \(error)")
+                    self.alertMessage = "An unexpected error occurred: \(error.localizedDescription)"
                     self.showAlert = true
                 }
             }
         }
+    
+    
     }
-}
+    }
+
+

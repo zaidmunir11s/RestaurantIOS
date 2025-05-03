@@ -310,23 +310,21 @@ struct PopularRestaurantsSection: View {
             }
             
             // Button to create a new restaurant
-            Button(action: {
-                navigateToCreateRestaurant = true
-            }) {
-                Label("Create New Restaurant", systemImage: "plus.circle.fill")
-                    .font(.headline)
-                    .padding()
-                    .frame(maxWidth: .infinity)
-                    .background(Color(hex: "4D52C7").opacity(0.9))
-                    .foregroundColor(.white)
-                    .cornerRadius(16)
-                    .shadow(radius: 3)
-            }
-            .padding(.top, 8)
-            .navigationDestination(isPresented: $navigateToCreateRestaurant) {
-                CreateRestaurantView()
-            }
-        }
+            NavigationLink(destination: CreateRestaurantView()) {
+                          HStack {
+                              Image(systemName: "plus.circle.fill")
+                              Text("Create New Restaurant")
+                                  .font(.headline)
+                          }
+                          .padding()
+                          .frame(maxWidth: .infinity)
+                          .background(Color(hex: "4D52C7").opacity(0.9))
+                          .foregroundColor(.white)
+                          .cornerRadius(16)
+                          .shadow(radius: 3)
+                      }
+                      .padding(.top, 8)
+                  }
     }
 }
 

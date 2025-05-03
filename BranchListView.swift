@@ -2,7 +2,7 @@ import SwiftUI
 
 struct BranchListView: View {
     let restaurantId: String
-       let restaurantName: String
+    let restaurantName: String
     
     @StateObject private var viewModel = BranchViewModel()
     @State private var navigateToCreateBranch = false
@@ -154,12 +154,13 @@ struct BranchListView: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
             }
-            .navigationDestination(isPresented: $navigateToCreateBranch) {
-                CreateBranchView(restaurantId: restaurantId, restaurantName: restaurantName)
-            }
         }
         .navigationBarHidden(true)
+        .navigationDestination(isPresented: $navigateToCreateBranch) {
+            CreateBranchView(restaurantId: restaurantId, restaurantName: restaurantName)
+        }
         .onAppear {
+            print("DEBUG: BranchListView appeared for restaurant ID: \(restaurantId)")
             viewModel.fetchBranches(restaurantId: restaurantId)
         }
     }
@@ -222,11 +223,5 @@ struct BranchCard: View {
         .background(Color.white)
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
-    }
-}
-
-struct BranchListView_Previews: PreviewProvider {
-    static var previews: some View {
-        BranchListView(restaurantId: "dummyId", restaurantName: "Restaurant A")
     }
 }

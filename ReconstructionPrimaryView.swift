@@ -11,20 +11,17 @@ struct ReconstructionPrimaryView: View {
     @State private var completed: Bool = false
     @State private var cancelled: Bool = false
 
+    // In ReconstructionPrimaryView.swift
+
     var body: some View {
         if completed && !cancelled {
-            // When reconstruction completes, show the DishSignUpView.
-            // Replace "placeholder" with your captured AR image asset name if available.
             if let folderManager = appModel.scanFolderManager {
-                   DishSignUpView(
+                DishSignUpView(
                     capturedUSDZURL: folderManager.modelsFolder.appendingPathComponent("model-mobile.usdz")
-                   )
-               } else {
-                   // Fallback if scanFolderManager is nil
-                   Text("No folder manager found.")
-               }
-
-
+                )
+            } else {
+                Text("No folder manager found.")
+            }
         } else {
             ReconstructionProgressView(outputFile: outputFile,
                                          completed: $completed,

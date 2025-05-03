@@ -39,21 +39,38 @@ class BranchViewModel: ObservableObject {
         }
     }
     
-    func createBranch(branch: CreateBranchModel) async -> Result<BranchResponse, Error> {
+    func createBranch(branch: CreateBranchModel, imageData: Data? = nil) async -> Result<BranchResponse, Error> {
         guard let token = userSession.authToken else {
             return .failure(APIError.unauthorized)
         }
         
+        isLoading = true
+        
         do {
-            let newBranch = try await NetworkService.shared.createBranch(branch: branch, token: token)
+            let newBranch: BranchResponse
+            if let imageData = imageData {
+                newBranch = try await NetworkService.shared.createBranchWithImage(
+                    branch: branch,
+                    imageData: imageData,
+                    token: token
+                )
+            } else {
+                newBranch = try await NetworkService.shared.createBranch(
+                    branch: branch,
+                    token: token
+                )
+            }
             
             await MainActor.run {
-                // Refresh the branch list
-                self.fetchBranches(restaurantId: branch.restaurantId)
+                self.branches.append(newBranch)
+                self.isLoading = false
             }
             
             return .success(newBranch)
         } catch {
+            await MainActor.run {
+                self.isLoading = false
+            }
             return .failure(error)
         }
     }
@@ -63,16 +80,21 @@ class BranchViewModel: ObservableObject {
             return .failure(APIError.unauthorized)
         }
         
+        isLoading = true
+        
         do {
             try await NetworkService.shared.deleteBranch(id: id, token: token)
             
             await MainActor.run {
-                // Remove the branch from the list
                 self.branches.removeAll { $0.id == id }
+                self.isLoading = false
             }
             
             return .success(())
         } catch {
+            await MainActor.run {
+                self.isLoading = false
+            }
             return .failure(error)
         }
     }
