@@ -12,7 +12,7 @@ class MenuViewModel: ObservableObject {
     private let userSession = UserSession.shared
     
     func fetchMenuItems(restaurantId: String, branchId: String? = nil) {
-        guard let token = userSession.authToken else {
+        guard let token = UserSession.shared.authToken else {
             errorMessage = "Authentication error. Please log in again."
             return
         }
@@ -22,6 +22,7 @@ class MenuViewModel: ObservableObject {
         
         Task {
             do {
+                print("DEBUG: Fetching menu items for restaurant ID: \(restaurantId)")
                 let items = try await NetworkService.shared.getMenuItems(
                     restaurantId: restaurantId,
                     branchId: branchId,
@@ -31,16 +32,19 @@ class MenuViewModel: ObservableObject {
                 DispatchQueue.main.async {
                     self.menuItems = items
                     self.isLoading = false
+                    print("DEBUG: Fetched \(items.count) menu items")
                 }
             } catch let error as APIError {
                 DispatchQueue.main.async {
                     self.errorMessage = error.message
                     self.isLoading = false
+                    print("DEBUG: Error fetching menu items: \(error.message)")
                 }
             } catch {
                 DispatchQueue.main.async {
                     self.errorMessage = "An unexpected error occurred"
                     self.isLoading = false
+                    print("DEBUG: Unexpected error fetching menu items: \(error)")
                 }
             }
         }

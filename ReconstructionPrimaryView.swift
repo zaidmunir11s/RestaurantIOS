@@ -10,6 +10,7 @@ struct ReconstructionPrimaryView: View {
 
     @State private var completed: Bool = false
     @State private var cancelled: Bool = false
+    var restaurantId: String = ""
 
     // In ReconstructionPrimaryView.swift
 
@@ -17,7 +18,8 @@ struct ReconstructionPrimaryView: View {
         if completed && !cancelled {
             if let folderManager = appModel.scanFolderManager {
                 DishSignUpView(
-                    capturedUSDZURL: folderManager.modelsFolder.appendingPathComponent("model-mobile.usdz")
+                    capturedUSDZURL: folderManager.modelsFolder.appendingPathComponent("model-mobile.usdz"),
+                    restaurantId: restaurantId
                 )
             } else {
                 Text("No folder manager found.")

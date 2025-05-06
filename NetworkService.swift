@@ -37,7 +37,7 @@ class NetworkService {
     static let shared = NetworkService()
     
     // Configure your base URL here
-     let baseURL = "http://172.18.99.189:5000/api"
+     let baseURL = "http://192.168.1.50:5000/api"
     
     private init() {}
     
